@@ -8,7 +8,6 @@ from .models import Greeting
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from asyncio.windows_events import NULL
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
@@ -41,18 +40,18 @@ def read_url(href, base_url):
     state = is_full_url(href)
     if  state == 1:
         # Are we going to handle PDF?
-        return NULL
+        return None
     elif state == 2:
         if href.startswith(base_url):
             return requests.get(href)
         else: 
-            return NULL
+            return None
     else:
         full_url = urljoin(base_url, href)
         if is_full_url(full_url):
             return requests.get(full_url)
         else:
-            return NULL
+            return None
 
 
 def recursive_read_bulletin(href, base_url, current_depth = 0):
@@ -65,7 +64,7 @@ def recursive_read_bulletin(href, base_url, current_depth = 0):
     response_text = ""
     
     bulletinInfo = read_url(href, base_url)
-    if bulletinInfo != NULL and bulletinInfo.status_code == 200:     # If we get a valid request for this link to a bulletin let's read it
+    if bulletinInfo != None and bulletinInfo.status_code == 200:     # If we get a valid request for this link to a bulletin let's read it
         soup = BeautifulSoup(bulletinInfo.text, 'html.parser')
         response_text += soup.title.get_text() + '\n'
         div_info = soup.find_all('div', class_='body-field')
