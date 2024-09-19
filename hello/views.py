@@ -151,11 +151,8 @@ def scrape_bulletin(url):
 
 
 class OhipBulletinAPIView(APIView):
-    def get(self, request, search=None):
-        if search is None:
-            return Response({"error": "search is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        cached_data = cache.get(search)
+    def get(self, request, search=None):        
+        cached_data = cache.get("bulletin")
 
         if cached_data:
             return Response(cached_data, status=status.HTTP_200_OK)
@@ -170,7 +167,7 @@ class OhipBulletinAPIView(APIView):
         }
         if bulletin_info:
             # here save cache
-            cache.set(search, bulletin_info, timeout=600) # 10 min cache ~ 600 seconds
+            cache.set("bulletin", bulletin_info, timeout=600) # 10 min cache ~ 600 seconds
             return Response(bulletin_info, status=status.HTTP_200_OK)
         else:
             return Response({"error": "Could not fetch OHIP Bulletin data"}, status=status.HTTP_400_BAD_REQUEST)
