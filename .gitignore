@@ -9,3 +9,9 @@ db.sqlite3
 
 # macOS files
 .DS_Store
+/.vs/ohip-bulletins-api/config/applicationhost.config
+/.vs/ohip-bulletins-api/FileContentIndex/1f933d09-fbd0-4272-bac2-79e9a41f00b6.vsidx
+/.vs/ohip-bulletins-api/FileContentIndex/282a364b-fe5f-44b0-8da2-80c8ef5abc1d.vsidx
+/.vs/ohip-bulletins-api/FileContentIndex
+/.vs/ohip-bulletins-api/v17
+/.vs
