@@ -161,9 +161,9 @@ class OhipBulletinAPIView(APIView):
         url_visited = []
         response_text = ""
         for url in urls:
-            response_text = scrape_bulletin(url)
+            response_text += scrape_bulletin(url)
         bulletin_info = {
-            "bulletinInfo": response_text,
+            "bulletinInfo": response_text[:50000],
         }
         if bulletin_info:
             # here save cache
