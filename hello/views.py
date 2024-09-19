@@ -1,3 +1,4 @@
+from urllib import response
 from django.shortcuts import render
 from django.core.cache import cache
 
@@ -12,11 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from urllib.parse import urljoin
-
-recursion_limit = 1
-column_width = 50
-url_visited = []
-response_text = ""
+from datetime import datetime, timedelta
 
 # urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
 #             "https://www.ontario.ca/document/ohip-infobulletins-2023",
@@ -24,6 +21,7 @@ response_text = ""
 #             "https://www.ontario.ca/document/ohip-infobulletins-2021/",
 #             "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
 urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024"] #Just 2024 to test
+last_year_bulletins = "https://www.ontario.ca/document/ohip-infobulletins-2024"
 
 # Helper function to scrape
 def is_full_url(href):
@@ -54,13 +52,10 @@ def read_url(href, base_url):
             return None
 
 
-def recursive_read_bulletin(href, base_url, current_depth = 0):
-    global recursion_limit
-    global column_width
+# We are not reading any URL inside each bulletin because we have limited text size to return to GPT
+def read_bulletin(href, base_url):
+    column_width = 50
     excluded_titles = ["Contact information", "Contact Information", "Contact\xa0information", "Keywords/Tags", "Keywords/tags", "Keywords\x2fTags"]
-    if current_depth >= recursion_limit:
-        return
-    url_visited.append(href)
     response_text = ""
     
     bulletinInfo = read_url(href, base_url)
@@ -101,10 +96,6 @@ def recursive_read_bulletin(href, base_url, current_depth = 0):
                                 for a in a_tags:
                                     href = a.get('href')
                                     response_text += a.get_text() + '\n'
-                                    if href not in url_visited and href not in urls and not href.startswith('mailto:') and not href.startswith('tel:'):
-                                            res = recursive_read_bulletin(href, base_url, current_depth + 1)
-                                            if res is not None:
-                                                response_text += res
                             else:
                                 for elem in sibling.children:
                                     response_text += elem.get_text()
@@ -128,10 +119,11 @@ def scrape_bulletin(url):
     parsed_url = urlparse(url)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
     response_text = ""
+    url_visited = []
     if response.status_code == 200:
         # HANDLE MAIN URL CONTAINING ALL BULLETINS FO THE YEAR (Example: Bulletins 2024)
         soup = BeautifulSoup(response.text, 'html.parser')
-        bulletins = soup.find_all('div', class_='main-content');    # Get all the div element on the main content at bulletins 2024
+        bulletins = soup.find_all('div', class_='main-content')    # Get all the div element on the main content at bulletins 2024
         for bulletin in bulletins:
             titles = bulletin.find_all('h2')                        # Find all H2 elements
             for title in titles:
@@ -145,30 +137,64 @@ def scrape_bulletin(url):
                             href = a.get('href')
                             if href not in url_visited:
                                 # HANDLE EACH BULLETIN ON THE PAGE
-                                response_text += recursive_read_bulletin(href, base_url)  
+                                response_text += read_bulletin(href, base_url) 
+                                url_visited.append(href)
                 response_text += '\n\n'
-        return response_text
+        return response_text, url_visited
 
+def get_updated_urls(url):
+    response = requests.get(url)
+    url_visited = []
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        bulletins = soup.find_all('div', class_='main-content');
+        for bulletin in bulletins:
+            uls = bulletin.find_all('ul')
+            for ul in uls: 
+                a_tags = ul.find_all('a')
+                for a in a_tags:
+                    href = a.get('href')
+                    if href not in url_visited:
+                        url_visited.append(href)
+    return url_visited
 
 class OhipBulletinAPIView(APIView):
     def get(self, request, search=None):        
         cached_data = cache.get("bulletin")
 
         if cached_data:
-            return Response(cached_data, status=status.HTTP_200_OK)
+            current_time = datetime.now()
+            time_diff = current_time - cached_data["timestamp"]
+            if time_diff < timedelta(hours = 24):
+                return Response(cached_data["bulletinInfo"], status=status.HTTP_200_OK)
+            else:
+                updated_urls = get_updated_urls(last_year_bulletins) # read current bullentins link
+                updated_status = True
+                for updated_url in updated_urls:
+                    if updated_url not in cached_data["urls"]:
+                        updated_status = False
+                if updated_status:
+                    return Response(cached_data["bulletinInfo"], status=status.HTTP_200_OK) 
+                
             
-        # If not in cache, scrape the website
+        # If not in cache, or if it is in cache but is not updated scrape the website
         url_visited = []
         response_text = ""
         for url in urls:
-            response_text += scrape_bulletin(url)
-        bulletin_info = {
+            r_text, r_url = scrape_bulletin(url)
+            response_text += r_text
+            url_visited += r_url
+            
+        bulletin_cache = {
             "bulletinInfo": response_text[:50000],
+            "urls": url_visited,
+            "timestamp" : datetime.now()
         }
-        if bulletin_info:
+
+        if bulletin_cache:
             # here save cache
-            cache.set("bulletin", bulletin_info, timeout=600) # 10 min cache ~ 600 seconds
-            return Response(bulletin_info, status=status.HTTP_200_OK)
+            cache.set("bulletin", bulletin_cache, timeout=600) # 10 min cache ~ 600 seconds
+            return Response(response_text[:50000], status=status.HTTP_200_OK)
         else:
             return Response({"error": "Could not fetch OHIP Bulletin data"}, status=status.HTTP_400_BAD_REQUEST)
 
