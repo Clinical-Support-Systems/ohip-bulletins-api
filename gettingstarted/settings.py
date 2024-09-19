@@ -202,9 +202,9 @@ REST_FRAMEWORK = {
 }
 
 # Cache
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',  # In-memory cache
-        'LOCATION': 'unique-snowflake',
-    }
-}
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',  # In-memory cache
+#         'LOCATION': 'unique-snowflake',
+#     }
+# }
