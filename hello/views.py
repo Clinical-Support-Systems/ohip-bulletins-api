@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 import requests
+import re
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from urllib.parse import urljoin
@@ -122,7 +123,7 @@ def read_bulletin(href, base_url):
                             keyword_list_text = []
                             for elem in sibling.children:
                                 keyword_list_text.append(elem.get_text() if hasattr(elem, 'get_text') else str(elem))
-                            keyword_list = list(map(str.strip, ''.join(keyword_list_text).split(';')))                    
+                            keyword_list = list(map(str.strip, ''.join(keyword_list_text).lower().split(';')))                    
     return response_text + '\n', keyword_list    
 
 def scrape_bulletin(url):
@@ -173,13 +174,29 @@ def get_updated_urls(url):
                         url_visited.append(href)
     return url_visited
 
+def normalize_and_tokenize(text):
+    # Convert to lowercase
+    text = text.lower()
+    # Remove special characters
+    text = re.sub(r'[^a-z0-9\s]', '', text)
+    # Split into tokens (words) and just keep words with len > 2
+    tokens = [k for k in text.split() if len(k) > 2]
+    # Keep just words with more than 3 letters
+    return tokens
+
 class OhipBulletinAPIView(APIView):
     def get(self, request, search=None):        
         cached_data = cache.get("bulletin")
         url_to_article = {} 
         keyword_to_url = {}
         response_text = ""
+        tokens = []
+        returned_urls = []
         
+        if search is not None:
+            # Normalize the input
+            tokens = normalize_and_tokenize(search)
+            
         if cached_data:
             visited_urls = cached_data["url_article"].keys()
             current_time = datetime.now()
@@ -193,10 +210,15 @@ class OhipBulletinAPIView(APIView):
             if updated_status:
                 keyword_to_url = cached_data["keyword_url"]
                 url_to_article = cached_data["url_article"]
-                if search in keyword_to_url.keys():
-                    for key_url in keyword_to_url[search]:
-                        if key_url in url_to_article.keys():
-                            response_text += url_to_article[key_url] + "\n"
+
+                for tk in tokens:
+                    matching = [s for s in keyword_to_url.keys() if tk in s]
+                    for match in matching:
+                        for key_url in keyword_to_url[match]:
+                            if key_url in url_to_article.keys():
+                                if key_url not in returned_urls:
+                                    returned_urls.append(key_url)
+                                    response_text += url_to_article[key_url] + "\n"
                 return Response(response_text[:70000], status=status.HTTP_200_OK)
                 
             
@@ -214,10 +236,14 @@ class OhipBulletinAPIView(APIView):
                         if val not in keyword_to_url[key]:
                             keyword_to_url[key].append(val)
         
-        if search in keyword_to_url.keys():
-            for key_url in keyword_to_url[search]:
-                if key_url in url_to_article.keys():
-                    response_text += url_to_article[key_url] + "\n"
+        for tk in tokens:
+            matching = [s for s in keyword_to_url.keys() if tk in s]
+            for match in matching:
+                for key_url in keyword_to_url[match]:
+                    if key_url in url_to_article.keys():
+                        if key_url not in returned_urls:
+                            returned_urls.append(key_url)
+                            response_text += url_to_article[key_url] + "\n"
 
         bulletin_cache = {
             "bulletinInfo": response_text,
