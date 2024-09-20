@@ -56,7 +56,9 @@ def read_url(href, base_url):
 def read_bulletin(href, base_url):
     column_width = 50
     excluded_titles = ["Contact information", "Contact Information", "Contact\xa0information", "Keywords/Tags", "Keywords/tags", "Keywords\x2fTags"]
+    keyword_titles = ["Keywords/Tags", "Keywords/tags", "Keywords\x2fTags"]
     response_text = ""
+    keyword_list = []
     
     bulletinInfo = read_url(href, base_url)
     if bulletinInfo != None and bulletinInfo.status_code == 200:     # If we get a valid request for this link to a bulletin let's read it
@@ -80,12 +82,12 @@ def read_bulletin(href, base_url):
                                     row_text = "\t".join([col.get_text(strip=True).ljust(column_width) for col in columns])
                                     response_text += row_text      
                         else:
-                            response_text += title_content                                       
+                            response_text += title_content + '\n'                                       
                 else:
-                    if(title_content not in excluded_titles):
-                        response_text += title_content                  
+                    if title_content not in excluded_titles:
+                        response_text += title_content + '\n'               
                         
-                if(title_content not in excluded_titles):
+                if title_content not in excluded_titles:
                     for sibling in title2.find_next_siblings():
                         if sibling.name == 'h2':
                             break
@@ -112,14 +114,24 @@ def read_bulletin(href, base_url):
                                 text = elem.get_text(separator=" ", strip=True)
                                 response_text += text
                     response_text += '\n'
-    return response_text + '\n'    
+                elif title_content in keyword_titles:
+                    for sibling in title2.find_next_siblings():
+                        if sibling.name == 'h2':
+                            break
+                        elif sibling.name in ['p']:
+                            keyword_list_text = []
+                            for elem in sibling.children:
+                                keyword_list_text.append(elem.get_text() if hasattr(elem, 'get_text') else str(elem))
+                            keyword_list = list(map(str.strip, ''.join(keyword_list_text).split(';')))                    
+    return response_text + '\n', keyword_list    
 
 def scrape_bulletin(url):
     response = requests.get(url)
     parsed_url = urlparse(url)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-    response_text = ""
-    url_visited = []
+    url_to_article = {} 
+    keyword_to_url = {}
+    
     if response.status_code == 200:
         # HANDLE MAIN URL CONTAINING ALL BULLETINS FO THE YEAR (Example: Bulletins 2024)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -127,7 +139,6 @@ def scrape_bulletin(url):
         for bulletin in bulletins:
             titles = bulletin.find_all('h2')                        # Find all H2 elements
             for title in titles:
-                response_text += title.text.strip() + '\n'          # Print the title
                 for sibling in title.find_next_siblings():
                     if sibling.name == 'h2':
                         break
@@ -135,12 +146,16 @@ def scrape_bulletin(url):
                         a_tags = sibling.find_all('a')              # Get links
                         for a in a_tags:
                             href = a.get('href')
-                            if href not in url_visited:
+                            if href not in url_to_article.keys():
                                 # HANDLE EACH BULLETIN ON THE PAGE
-                                response_text += read_bulletin(href, base_url) 
-                                url_visited.append(href)
-                response_text += '\n\n'
-        return response_text, url_visited
+                                r_text, r_keywords = read_bulletin(href, base_url) 
+                                for keyword in r_keywords:
+                                    if keyword not in keyword_to_url:
+                                        keyword_to_url[keyword] = [href]
+                                    elif href not in keyword_to_url[keyword]:
+                                            keyword_to_url[keyword].append(href)
+                                url_to_article[href] = r_text
+        return url_to_article, keyword_to_url
 
 def get_updated_urls(url):
     response = requests.get(url)
@@ -161,40 +176,60 @@ def get_updated_urls(url):
 class OhipBulletinAPIView(APIView):
     def get(self, request, search=None):        
         cached_data = cache.get("bulletin")
-
+        url_to_article = {} 
+        keyword_to_url = {}
+        response_text = ""
+        
         if cached_data:
+            visited_urls = cached_data["url_article"].keys()
             current_time = datetime.now()
             time_diff = current_time - cached_data["timestamp"]
-            if time_diff < timedelta(hours = 24):
-                return Response(cached_data["bulletinInfo"], status=status.HTTP_200_OK)
-            else:
+            updated_status = True
+            if time_diff > timedelta(hours = 24):
                 updated_urls = get_updated_urls(last_year_bulletins) # read current bullentins link
-                updated_status = True
                 for updated_url in updated_urls:
-                    if updated_url not in cached_data["urls"]:
+                    if updated_url not in visited_urls:
                         updated_status = False
-                if updated_status:
-                    return Response(cached_data["bulletinInfo"], status=status.HTTP_200_OK) 
+            if updated_status:
+                keyword_to_url = cached_data["keyword_url"]
+                url_to_article = cached_data["url_article"]
+                if search in keyword_to_url.keys():
+                    for key_url in keyword_to_url[search]:
+                        if key_url in url_to_article.keys():
+                            response_text += url_to_article[key_url] + "\n"
+                return Response(response_text[:70000], status=status.HTTP_200_OK)
                 
             
         # If not in cache, or if it is in cache but is not updated scrape the website
-        url_visited = []
-        response_text = ""
         for url in urls:
-            r_text, r_url = scrape_bulletin(url)
-            response_text += r_text
-            url_visited += r_url
-            
+            dict_url_article, dict_keyword_url = scrape_bulletin(url)
+            for key, value in dict_url_article.items():
+                if key not in url_to_article:
+                    url_to_article[key] = value
+            for key, value in dict_keyword_url.items():
+                if key not in keyword_to_url:
+                    keyword_to_url[key] = value
+                else:
+                    for val in value:
+                        if val not in keyword_to_url[key]:
+                            keyword_to_url[key].append(val)
+        
+        if search in keyword_to_url.keys():
+            for key_url in keyword_to_url[search]:
+                if key_url in url_to_article.keys():
+                    response_text += url_to_article[key_url] + "\n"
+
         bulletin_cache = {
-            "bulletinInfo": response_text[:50000],
-            "urls": url_visited,
+            "bulletinInfo": response_text,
+            "url_article": url_to_article,
+            "keyword_url": keyword_to_url,
             "timestamp" : datetime.now()
         }
 
         if bulletin_cache:
             # here save cache
             cache.set("bulletin", bulletin_cache, timeout=600) # 10 min cache ~ 600 seconds
-            return Response(response_text[:50000], status=status.HTTP_200_OK)
+            return Response(response_text[:70000], status=status.HTTP_200_OK)
         else:
             return Response({"error": "Could not fetch OHIP Bulletin data"}, status=status.HTTP_400_BAD_REQUEST)
 
