@@ -16,12 +16,11 @@ from urllib.parse import urlparse
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
 
-# urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
-#             "https://www.ontario.ca/document/ohip-infobulletins-2023",
-#             "https://www.ontario.ca/document/ohip-infobulletins-2022/",
-#             "https://www.ontario.ca/document/ohip-infobulletins-2021/",
-#             "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
-urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024"] #Just 2024 to test
+urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
+            "https://www.ontario.ca/document/ohip-infobulletins-2023",
+            "https://www.ontario.ca/document/ohip-infobulletins-2022/",
+            "https://www.ontario.ca/document/ohip-infobulletins-2021/",
+            "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
 last_year_bulletins = "https://www.ontario.ca/document/ohip-infobulletins-2024"
 
 # Helper function to scrape
@@ -192,6 +191,7 @@ class OhipBulletinAPIView(APIView):
         response_text = ""
         tokens = []
         returned_urls = []
+        updated_status = True
         
         if search is not None:
             # Normalize the input
@@ -201,7 +201,6 @@ class OhipBulletinAPIView(APIView):
             visited_urls = cached_data["url_article"].keys()
             current_time = datetime.now()
             time_diff = current_time - cached_data["timestamp"]
-            updated_status = True
             if time_diff > timedelta(hours = 24):
                 updated_urls = get_updated_urls(last_year_bulletins) # read current bullentins link
                 for updated_url in updated_urls:
@@ -223,7 +222,11 @@ class OhipBulletinAPIView(APIView):
                 
             
         # If not in cache, or if it is in cache but is not updated scrape the website
-        for url in urls:
+        urls_to_update = urls
+        if not updated_status:
+            urls_to_update = last_year_bulletins
+                
+        for url in urls_to_update:
             dict_url_article, dict_keyword_url = scrape_bulletin(url)
             for key, value in dict_url_article.items():
                 if key not in url_to_article:
