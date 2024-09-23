@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
+from rest_framework_api_key.permissions import HasAPIKey
 
 urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
             "https://www.ontario.ca/document/ohip-infobulletins-2023",
@@ -184,6 +185,7 @@ def normalize_and_tokenize(text):
     return tokens
 
 class OhipBulletinAPIView(APIView):
+    permission_classes = [HasAPIKey]
     def get(self, request, search=None):        
         cached_data = cache.get("bulletin")
         url_to_article = {} 
