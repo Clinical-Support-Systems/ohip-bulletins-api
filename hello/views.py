@@ -17,11 +17,12 @@ from urllib.parse import urljoin
 from datetime import datetime, timedelta
 from rest_framework_api_key.permissions import HasAPIKey
 
-urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
-            "https://www.ontario.ca/document/ohip-infobulletins-2023",
-            "https://www.ontario.ca/document/ohip-infobulletins-2022/",
-            "https://www.ontario.ca/document/ohip-infobulletins-2021/",
-            "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
+# urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2023",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2022/",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2021/",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
+urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024"]
 last_year_bulletins = "https://www.ontario.ca/document/ohip-infobulletins-2024"
 
 # Helper function to scrape
@@ -186,83 +187,86 @@ def normalize_and_tokenize(text):
 
 class OhipBulletinAPIView(APIView):
     permission_classes = [HasAPIKey]
-    def get(self, request, search=None):        
-        cached_data = cache.get("bulletin")
-        url_to_article = {} 
-        keyword_to_url = {}
-        response_text = ""
-        tokens = []
-        returned_urls = []
-        updated_status = True
+    def get(self, request, search=None):    
+        try:
+            cached_data = cache.get("bulletin")
+            url_to_article = {} 
+            keyword_to_url = {}
+            response_text = ""
+            tokens = []
+            returned_urls = []
+            updated_status = True
         
-        if search is not None:
-            # Normalize the input
-            tokens = normalize_and_tokenize(search)
+            if search is not None:
+                # Normalize the input
+                tokens = normalize_and_tokenize(search)
             
-        if cached_data:
-            visited_urls = cached_data["url_article"].keys()
-            current_time = datetime.now()
-            time_diff = current_time - cached_data["timestamp"]
-            if time_diff > timedelta(hours = 24):
-                updated_urls = get_updated_urls(last_year_bulletins) # read current bullentins link
-                for updated_url in updated_urls:
-                    if updated_url not in visited_urls:
-                        updated_status = False
-            if updated_status:
-                keyword_to_url = cached_data["keyword_url"]
-                url_to_article = cached_data["url_article"]
+            if cached_data:
+                visited_urls = cached_data["url_article"].keys()
+                current_time = datetime.now()
+                time_diff = current_time - cached_data["timestamp"]
+                if time_diff > timedelta(hours = 24):
+                    updated_urls = get_updated_urls(last_year_bulletins) # read current bullentins link
+                    for updated_url in updated_urls:
+                        if updated_url not in visited_urls:
+                            updated_status = False
+                if updated_status:
+                    keyword_to_url = cached_data["keyword_url"]
+                    url_to_article = cached_data["url_article"]
 
-                for tk in tokens:
-                    matching = [s for s in keyword_to_url.keys() if tk in s]
-                    for match in matching:
-                        for key_url in keyword_to_url[match]:
-                            if key_url in url_to_article.keys():
-                                if key_url not in returned_urls:
-                                    returned_urls.append(key_url)
-                                    response_text += url_to_article[key_url] + "\n"
+                    for tk in tokens:
+                        matching = [s for s in keyword_to_url.keys() if tk in s]
+                        for match in matching:
+                            for key_url in keyword_to_url[match]:
+                                if key_url in url_to_article.keys():
+                                    if key_url not in returned_urls:
+                                        returned_urls.append(key_url)
+                                        response_text += url_to_article[key_url] + "\n"
+                    return Response(response_text[:70000], status=status.HTTP_200_OK)
+                
+            
+            # If not in cache, or if it is in cache but is not updated scrape the website
+            urls_to_update = urls
+            if not updated_status:
+                urls_to_update = last_year_bulletins
+                
+            for url in urls_to_update:
+                dict_url_article, dict_keyword_url = scrape_bulletin(url)
+                for key, value in dict_url_article.items():
+                    if key not in url_to_article:
+                        url_to_article[key] = value
+                for key, value in dict_keyword_url.items():
+                    if key not in keyword_to_url:
+                        keyword_to_url[key] = value
+                    else:
+                        for val in value:
+                            if val not in keyword_to_url[key]:
+                                keyword_to_url[key].append(val)
+        
+            for tk in tokens:
+                matching = [s for s in keyword_to_url.keys() if tk in s]
+                for match in matching:
+                    for key_url in keyword_to_url[match]:
+                        if key_url in url_to_article.keys():
+                            if key_url not in returned_urls:
+                                returned_urls.append(key_url)
+                                response_text += url_to_article[key_url] + "\n"
+
+            bulletin_cache = {
+                "bulletinInfo": response_text,
+                "url_article": url_to_article,
+                "keyword_url": keyword_to_url,
+                "timestamp" : datetime.now()
+            }
+
+            if bulletin_cache:
+                # here save cache
+                cache.set("bulletin", bulletin_cache, timeout=600) # 10 min cache ~ 600 seconds
                 return Response(response_text[:70000], status=status.HTTP_200_OK)
-                
-            
-        # If not in cache, or if it is in cache but is not updated scrape the website
-        urls_to_update = urls
-        if not updated_status:
-            urls_to_update = last_year_bulletins
-                
-        for url in urls_to_update:
-            dict_url_article, dict_keyword_url = scrape_bulletin(url)
-            for key, value in dict_url_article.items():
-                if key not in url_to_article:
-                    url_to_article[key] = value
-            for key, value in dict_keyword_url.items():
-                if key not in keyword_to_url:
-                    keyword_to_url[key] = value
-                else:
-                    for val in value:
-                        if val not in keyword_to_url[key]:
-                            keyword_to_url[key].append(val)
-        
-        for tk in tokens:
-            matching = [s for s in keyword_to_url.keys() if tk in s]
-            for match in matching:
-                for key_url in keyword_to_url[match]:
-                    if key_url in url_to_article.keys():
-                        if key_url not in returned_urls:
-                            returned_urls.append(key_url)
-                            response_text += url_to_article[key_url] + "\n"
-
-        bulletin_cache = {
-            "bulletinInfo": response_text,
-            "url_article": url_to_article,
-            "keyword_url": keyword_to_url,
-            "timestamp" : datetime.now()
-        }
-
-        if bulletin_cache:
-            # here save cache
-            cache.set("bulletin", bulletin_cache, timeout=600) # 10 min cache ~ 600 seconds
-            return Response(response_text[:70000], status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Could not fetch OHIP Bulletin data"}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"error": "Could not fetch OHIP Bulletin data"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response ({"error": "Something went wrong on the server"}, status=500)
 
 
 
