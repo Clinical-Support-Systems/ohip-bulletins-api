@@ -185,7 +185,7 @@ def normalize_and_tokenize(text):
     return tokens
 
 class OhipBulletinAPIView(APIView):
-    permission_classes = [HasAPIKey]
+    #permission_classes = [HasAPIKey]
     def get(self, request, search=None):        
         cached_data = cache.get("bulletin")
         url_to_article = {} 
