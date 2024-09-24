@@ -37,6 +37,10 @@ SECRET_KEY = os.environ.get(
     default=secrets.token_urlsafe(nbytes=64),
 )
 
+# API_KEY
+API_KEY = os.getenv("API_KEY")
+DEFAULT_API_KEY = API_KEY 
+
 # The `DYNO` env var is set on Heroku CI, but it's not a real Heroku app, so we have to
 # also explicitly exclude CI:
 # https://devcenter.heroku.com/articles/heroku-ci#immutable-environment-variables
