@@ -2,6 +2,8 @@ from urllib import response
 from django.shortcuts import render
 from django.core.cache import cache
 
+from hello.permissions import HasStaticAPIKey
+
 from .models import Greeting
 
 # Create your views here.
@@ -15,7 +17,6 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
-from rest_framework_api_key.permissions import HasAPIKey
 
 # urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
 #             "https://www.ontario.ca/document/ohip-infobulletins-2023",
@@ -186,7 +187,7 @@ def normalize_and_tokenize(text):
     return tokens
 
 class OhipBulletinAPIView(APIView):
-    permission_classes = [HasAPIKey]
+    permission_classes = [HasStaticAPIKey]
     def get(self, request, search=None):    
         try:
             cached_data = cache.get("bulletin")
