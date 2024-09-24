@@ -18,11 +18,12 @@ from urllib.parse import urlparse
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
 
-urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
-            "https://www.ontario.ca/document/ohip-infobulletins-2023",
-            "https://www.ontario.ca/document/ohip-infobulletins-2022/",
-            "https://www.ontario.ca/document/ohip-infobulletins-2021/",
-            "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
+# urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2023",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2022/",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2021/",
+#             "https://www.ontario.ca/document/ohip-infobulletins-2020/"]
+urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024"]
 last_year_bulletins = "https://www.ontario.ca/document/ohip-infobulletins-2024"
 
 # Helper function to scrape
