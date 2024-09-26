@@ -262,7 +262,7 @@ class OhipBulletinAPIView(APIView):
 
             # START Testing AREA
             response_text = "empty first"
-            # cached_data = cache.get("bulletin")
+            cached_data = cache.get("bulletin")
             # if cached_data:
             #     return Response(cached_data, status=status.HTTP_200_OK)
             bulletin_cache = {
