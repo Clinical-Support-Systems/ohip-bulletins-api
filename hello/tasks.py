@@ -1,22 +1,14 @@
-from urllib import response
-from django.shortcuts import render
-from django.core.cache import cache
-
-from hello.permissions import HasStaticAPIKey
-
-from .models import Greeting
-
-# Create your views here.
-
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework import status
-import requests
 import re
+import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
+
+from django.core.cache import cache
+from datetime import datetime
+import time
+import schedule
 
 urls = ["https://www.ontario.ca/document/ohip-infobulletins-2024",
             "https://www.ontario.ca/document/ohip-infobulletins-2023",
@@ -53,7 +45,6 @@ def read_url(href, base_url):
             return requests.get(full_url)
         else:
             return None
-
 
 # We are not reading any URL inside each bulletin because we have limited text size to return to GPT
 def read_bulletin(href, base_url):
@@ -158,7 +149,7 @@ def scrape_bulletin(url):
                                     elif href not in keyword_to_url[keyword]:
                                             keyword_to_url[keyword].append(href)
                                 url_to_article[href] = r_text
-        return url_to_article, keyword_to_url
+        return url_to_article, keyword_to_url     
 
 def get_updated_urls(url):
     response = requests.get(url)
@@ -174,103 +165,60 @@ def get_updated_urls(url):
                     href = a.get('href')
                     if href not in url_visited:
                         url_visited.append(href)
-    return url_visited
+    return url_visited    
 
-def normalize_and_tokenize(text):
-    # Convert to lowercase
-    text = text.lower()
-    # Remove special characters
-    text = re.sub(r'[^a-z\-0-9\s]', '', text)
-    # Split into tokens (words) and just keep words with len > 2
-    tokens = [k for k in text.split() if len(k) > 2]
-    # Keep just words with more than 3 letters
-    return tokens
-
-class OhipBulletinAPIView(APIView):
-    permission_classes = [HasStaticAPIKey]
-    def get(self, request, search=None):    
-        try:
-            cached_data = cache.get("bulletin")
-            url_to_article = {} 
-            keyword_to_url = {}
-            response_text = ""
-            tokens = []
-            returned_urls = []
-            updated_status = True
+def job():
+    cached_data = cache.get("bulletin")
+    url_to_article = {} 
+    keyword_to_url = {}
+    updated_status = True
+    urls_to_update = urls
         
-            if search is not None:
-                # Normalize the input
-                tokens = normalize_and_tokenize(search)
-            
-            # If we have data just use it
-            if cached_data:
-                keyword_to_url = cached_data["keyword_url"]
-                url_to_article = cached_data["url_article"]
-                for tk in tokens:
-                    matching = [s for s in keyword_to_url.keys() if tk in s]
-                    for match in matching:
-                        for key_url in keyword_to_url[match]:
-                            if key_url in url_to_article.keys():
-                                if key_url not in returned_urls:
-                                    returned_urls.append(key_url)
-                                    response_text += url_to_article[key_url] + "\n"
-                return Response(response_text[:70000], status=status.HTTP_200_OK)
+    if cached_data:
+        # save the current bulletins and set urls_to_update to just check bulletins for last year
+        visited_urls = cached_data["url_article"].keys()
+        current_time = datetime.now()
+        time_diff = current_time - cached_data["timestamp"]
+        # Making sure that we are running this just once a day
+        if time_diff > timedelta(hours = 23):
+            keyword_to_url = cached_data["keyword_url"]
+            url_to_article = cached_data["url_article"]
+            urls_to_update = last_year_bulletins
+            updated_urls = get_updated_urls(last_year_bulletins) # read current bullentins link
+            for updated_url in updated_urls:
+                if updated_url not in visited_urls:
+                    updated_status = False
+        if updated_status:
+            # If we are under less than a day or if it is update - Nothing to do here
+            return               
+                    
+    # If not in cache, or if it is in cache but is not updated scrape the website        
+    for url in urls_to_update:
+        dict_url_article, dict_keyword_url = scrape_bulletin(url)
+        for key, value in dict_url_article.items():
+            if key not in url_to_article:
+                url_to_article[key] = value
+        for key, value in dict_keyword_url.items():
+            if key not in keyword_to_url:
+                keyword_to_url[key] = value
             else:
-                # If not in cache, scrape the website
-                for url in urls:
-                    dict_url_article, dict_keyword_url = scrape_bulletin(url)
-                    for key, value in dict_url_article.items():
-                        if key not in url_to_article:
-                            url_to_article[key] = value
-                    for key, value in dict_keyword_url.items():
-                        if key not in keyword_to_url:
-                            keyword_to_url[key] = value
-                        else:
-                            for val in value:
-                                if val not in keyword_to_url[key]:
-                                    keyword_to_url[key].append(val)
-                # Check for the tokens on the search
-                for tk in tokens:
-                    matching = [s for s in keyword_to_url.keys() if tk in s]
-                    for match in matching:
-                        for key_url in keyword_to_url[match]:
-                            if key_url in url_to_article.keys():
-                                if key_url not in returned_urls:
-                                    returned_urls.append(key_url)
-                                    response_text += url_to_article[key_url] + "\n"
+                for val in value:
+                    if val not in keyword_to_url[key]:
+                        keyword_to_url[key].append(val)
 
-                bulletin_cache = {
-                    "url_article": url_to_article,
-                    "keyword_url": keyword_to_url,
-                    "timestamp" : datetime.now()
-                }
-                if bulletin_cache:
-                    cache.set("bulletin", bulletin_cache, timeout=None) # never expire
-                    return Response(response_text[:70000], status=status.HTTP_200_OK)
-                else:
-                    return Response({"error": "Could not fetch OHIP Bulletin data"}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response ({"error": "Something went wrong on the server"}, status=500)
+    bulletin_cache = {
+        "url_article": url_to_article,
+        "keyword_url": keyword_to_url,
+        "timestamp" : datetime.now()
+    }
 
+    if bulletin_cache:
+        # here save cache
+        cache.set("bulletin", bulletin_cache, timeout=None) # never expire
 
-
-def index(request):
-    return render(request, "index.html")
-
-def db(request):
-    # If you encounter errors visiting the `/db/` page on the example app, check that:
-    #
-    # When running the app on Heroku:
-    #   1. You have added the Postgres database to your app.
-    #   2. You have uncommented the `psycopg` dependency in `requirements.txt`, and the `release`
-    #      process entry in `Procfile`, git committed your changes and re-deployed the app.
-    #
-    # When running the app locally:
-    #   1. You have run `./manage.py migrate` to create the `hello_greeting` database table.
-
-    greeting = Greeting()
-    greeting.save()
-
-    greetings = Greeting.objects.all()
-
-    return render(request, "db.html", {"greetings": greetings})
+def update_cache():
+    job() # run job first time    
+    schedule.every().day.at("00:00").do(job)
+    while True:
+        schedule.run_pending()
+        time.sleep(1) 

@@ -216,10 +216,12 @@ REST_FRAMEWORK = {
 
 # Cache
 CACHES = {
-    #'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',  # In-memory cache
-    # 'LOCATION': 'unique-snowflake',
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'ohip_bulletins_cache_table',
-    }
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }    
+    # 'default': {
+    #     'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+    #     'LOCATION': 'ohip_bulletins_cache_table',
+    # }
 }
