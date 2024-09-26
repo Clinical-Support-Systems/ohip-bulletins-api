@@ -9,7 +9,7 @@ djangorestframework>=3.15.2
 urllib3>=2.2.3
 uritemplate>=4.1.1
 python-dotenv>=1.0.1
-django-apscheduler>=0.6.2
+schedule>=1.2.2
 
 # Uncomment these lines to use a Postgres database. Both are needed, since in production
 # (which uses Linux) we want to install from source, so that security updates from the
