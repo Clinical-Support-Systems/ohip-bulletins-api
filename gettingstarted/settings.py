@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "hello",
     "rest_framework",
+    "django_apscheduler",
 ]
 
 MIDDLEWARE = [
@@ -215,8 +216,10 @@ REST_FRAMEWORK = {
 
 # Cache
 CACHES = {
+    #'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',  # In-memory cache
+    # 'LOCATION': 'unique-snowflake',
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',  # In-memory cache
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'ohip_bulletins_cache_table',
     }
 }
