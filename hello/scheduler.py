@@ -50,7 +50,7 @@ class start_scheduler():
 
     scheduler.add_job(
       update_cache,
-      trigger=CronTrigger(minute="*/2"),  # Every 2 min
+      trigger=CronTrigger(minute="*/10"),  # Every 2 min
       id="my_job",  # The `id` assigned to each job MUST be unique
       max_instances=1,
       replace_existing=True,
